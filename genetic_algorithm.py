@@ -4,17 +4,26 @@ from random import randint
 
 from shapely.geometry import Polygon, LineString
 
-from utils.plotter import plot
+from utils.plotter import plot, plot_fitness_history
 
-def start(obstacles, path_points, path_validity):
+def start(obstacles, path_points, path_validity, show_animation=True):
 
     population = _generate_population(path_points, obstacles, path_validity)
-    path_lengths = []
 
+    for i, chromosome in enumerate(population, start=1):
+        chromosome_array = [int(gene) for gene in chromosome]
+        length = _calculate_path_length(chromosome, path_points)
+        print(f"Chromosome {i}: {chromosome_array} | Length: {length}")
+
+    path_lengths = []
     for chromosome in population:
         path_lengths.append(_calculate_path_length(chromosome, path_points))
 
-    plot(obstacles, path_points, population, path_lengths, 1, False)
+    best_fitness_history = [1 / min(path_lengths)]
+    avg_fitness_history = [sum(1 / length for length in path_lengths) / len(path_lengths)]
+
+    if show_animation:
+        plot(obstacles, path_points, population, path_lengths, 1, False)
 
     generations = int(parser['Genetic Algorithm']['max_generations'])
     
@@ -40,9 +49,30 @@ def start(obstacles, path_points, path_validity):
             path_lengths.append(_calculate_path_length(child, path_points))
             new_population.append(child)
 
-        population = new_population 
-        plot(obstacles, path_points, new_population, path_lengths, (gen+2), last_gen=True if gen == generations-2 else False )
+        population = new_population
 
+        best_fitness_history.append(1 / min(path_lengths))
+        avg_fitness_history.append(sum(1 / length for length in path_lengths) / len(path_lengths))
+
+        if show_animation:
+            plot(obstacles, path_points, new_population, path_lengths, (gen + 2), last_gen=True if gen == generations - 2 else False)
+
+    best_index = population.index(min(population, key=lambda c: _calculate_path_length(c, path_points)))
+    best_chromosome = population[best_index]
+    best_length = _calculate_path_length(best_chromosome, path_points)
+    best_chromosome_array = [int(gene) for gene in best_chromosome]
+
+    max_angle_best = 0.0
+    visited_points = [path_points[i] for i, gene in enumerate(best_chromosome) if gene == '1']
+    if len(visited_points) >= 3:
+        for i in range(1, len(visited_points) - 1):
+            angle = _turn_angle_degrees(visited_points[i - 1], visited_points[i], visited_points[i + 1])
+            max_angle_best = max(max_angle_best, angle)
+
+    if not show_animation:
+        plot(obstacles, path_points, [best_chromosome], [best_length], generations, last_gen=True)
+
+    return best_fitness_history, avg_fitness_history, best_chromosome_array, best_length, max_angle_best
 
 def _mutation(chromosome):
     index = randint(1, len(chromosome) - 2) # we won't mutate source and goal genes
@@ -53,6 +83,11 @@ def _mutation(chromosome):
     return ''.join(chromosome)
 
 def _fitness(chromosome, path_points):
+    max_turn_angle = float(parser['Genetic Algorithm']['max_turn_angle'])
+
+    if _violates_turn_constraint(chromosome, path_points, max_turn_angle):
+        return 0
+
     length = _calculate_path_length(chromosome, path_points)
     fitness = 1 / length if length != 0 else 0
 
@@ -191,3 +226,36 @@ def _calculate_path_length(chromosome, path_points):
 
 def _distance(path_point_1, path_point_2):
     return math.sqrt( (path_point_2[0] - path_point_1[0])**2 + (path_point_2[1] - path_point_1[1])**2 )
+
+
+# Aturan baru vatas sudut belok maksimum.
+def _turn_angle_degrees(p1, p2, p3):
+    v1x, v1y = p1[0] - p2[0], p1[1] - p2[1]
+    v2x, v2y = p3[0] - p2[0], p3[1] - p2[1]
+
+    norm1 = math.sqrt(v1x**2 + v1y**2)
+    norm2 = math.sqrt(v2x**2 + v2y**2)
+
+    if norm1 == 0 or norm2 == 0:
+        return 0
+
+    cos_theta = (v1x * v2x + v1y * v2y) / (norm1 * norm2)
+    cos_theta = max(-1.0, min(1.0, cos_theta))
+
+    return math.degrees(math.acos(cos_theta))
+
+def _violates_turn_constraint(chromosome, path_points, max_turn_angle):
+    visited_points = [path_points[i] for i, gene in enumerate(chromosome) if gene == '1']
+    if len(visited_points) < 3:
+        return False
+
+    for i in range(1, len(visited_points) - 1):
+        angle = _turn_angle_degrees(
+            visited_points[i - 1],
+            visited_points[i],
+            visited_points[i + 1]
+        )
+        if angle > max_turn_angle:
+            return True
+
+    return False

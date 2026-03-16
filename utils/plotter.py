@@ -73,3 +73,24 @@ def _plot_obstacles(obstacles):
             y_values.append(vertex[1])
         
         plt.fill(x_values, y_values, 'r')
+
+def plot_fitness_history(experiments):
+    plt.ioff() 
+    n = len(experiments)
+    fig, axes = plt.subplots(1, n, figsize=(6 * n, 5))
+    if n == 1:
+        axes = [axes]
+
+    for ax, (best_history, avg_history, label, color) in zip(axes, experiments):
+        generations = list(range(1, len(best_history) + 1))
+        ax.plot(generations, best_history, color=color, label='Best Fitness')
+        ax.plot(generations, avg_history, color=color, linestyle='--', alpha=0.5, label='Avg Fitness')
+        ax.set_title(label, fontsize=9)
+        ax.set_xlabel('Generation')
+        ax.set_ylabel('Fitness (1/length)')
+        ax.legend()
+        ax.grid(True)
+
+    plt.tight_layout()
+    print('Done! You may now close the window.')
+    plt.show(block=True)
